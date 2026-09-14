@@ -1,0 +1,40 @@
+name: PR theme cleanup
+
+on:
+  pull_request:
+    types: [closed]
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      # The preview job leaves the theme ID in a hidden marker in its PR
+      # comment (see pr-preview.yml) — read it back so cleanup doesn't need
+      # its own separate state store.
+      - name: Find the preview theme ID
+        id: find
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const marker = '<!-- shopify-theme-deploy-action:preview -->';
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const comment = comments.find((c) => c.body.includes(marker));
+            if (!comment) {
+              core.setOutput('theme-id', '');
+              return;
+            }
+            const match = comment.body.match(/<!-- theme-id:(\d+) -->/);
+            core.setOutput('theme-id', match ? match[1] : '');
+
+      - name: Delete preview theme
+        if: steps.find.outputs.theme-id != ''
+        uses: Ecom-Swift-LLC/shopify-theme-deploy-action@v1
+        with:
+          mode: cleanup
+          store: ${{ secrets.SHOPIFY_STORE }}
+          theme-token: ${{ secrets.SHOPIFY_THEME_TOKEN }}
+          theme: ${{ steps.find.outputs.theme-id }}

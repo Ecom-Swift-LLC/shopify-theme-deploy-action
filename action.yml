@@ -1,0 +1,131 @@
+name: 'Shopify Theme Deploy'
+description: >-
+  Push a Shopify theme from CI with Shopify CLI — deploy on merge, spin up a
+  named preview theme per pull request, or clean one up when the PR closes.
+author: 'Ecom Swift LLC'
+branding:
+  icon: 'upload-cloud'
+  color: 'green'
+
+inputs:
+  mode:
+    description: >-
+      What to do: "push" deploys to a specific theme (or the live theme with
+      allow-live), "preview" pushes to a reusable development theme keyed by
+      `context` (e.g. one per PR), "cleanup" deletes a theme by ID.
+    required: false
+    default: 'push'
+  store:
+    description: 'Store domain, e.g. my-shop.myshopify.com or my-shop.'
+    required: true
+  theme-token:
+    description: >-
+      Theme Access password (from the Theme Access app) or an Admin API
+      access token with theme read/write scopes. Pass this from a secret,
+      never hardcode it in the workflow.
+    required: true
+  theme:
+    description: >-
+      Theme ID or name. Required for mode "push" (unless `live` is true) and
+      for mode "cleanup" (the theme ID to delete).
+    required: false
+    default: ''
+  live:
+    description: 'mode "push" only: push to the live theme instead of `theme`.'
+    required: false
+    default: 'false'
+  allow-live:
+    description: >-
+      mode "push" only: required alongside `live: true` — Shopify CLI refuses
+      to overwrite the live theme in non-interactive environments otherwise.
+    required: false
+    default: 'false'
+  context:
+    description: >-
+      mode "preview" only: a stable identifier for the preview theme, e.g.
+      `pr-${{ github.event.pull_request.number }}`. Reuses the theme on every
+      push to the same PR instead of creating a new one each time.
+    required: false
+    default: ''
+  path:
+    description: 'Path to the theme directory.'
+    required: false
+    default: '.'
+  only:
+    description: >-
+      Newline-separated glob patterns — upload only matching files. Passed as
+      Shopify CLI's --only, once per line.
+    required: false
+    default: ''
+  ignore:
+    description: >-
+      Newline-separated glob patterns to skip. Passed as Shopify CLI's
+      --ignore, once per line.
+    required: false
+    default: ''
+  strict:
+    description: 'Run theme check and require it to pass (warnings allowed) before pushing.'
+    required: false
+    default: 'false'
+  cli-version:
+    description: 'Shopify CLI version to install.'
+    required: false
+    default: 'latest'
+
+outputs:
+  theme-id:
+    description: 'ID of the theme that was pushed to or deleted.'
+    value: ${{ steps.push.outputs.theme-id || steps.preview.outputs.theme-id }}
+  preview-url:
+    description: 'Storefront preview URL for the theme (push and preview modes).'
+    value: ${{ steps.push.outputs.preview-url || steps.preview.outputs.preview-url }}
+  editor-url:
+    description: 'Shopify admin theme editor URL (push and preview modes).'
+    value: ${{ steps.push.outputs.editor-url || steps.preview.outputs.editor-url }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Install Shopify CLI
+      shell: bash
+      run: npm install --global "@shopify/cli@${{ inputs.cli-version }}"
+
+    - name: Push theme
+      if: inputs.mode == 'push'
+      id: push
+      shell: bash
+      env:
+        SHOPIFY_FLAG_STORE: ${{ inputs.store }}
+        SHOPIFY_CLI_THEME_TOKEN: ${{ inputs.theme-token }}
+        INPUT_THEME: ${{ inputs.theme }}
+        INPUT_LIVE: ${{ inputs.live }}
+        INPUT_ALLOW_LIVE: ${{ inputs.allow-live }}
+        INPUT_PATH: ${{ inputs.path }}
+        INPUT_ONLY: ${{ inputs.only }}
+        INPUT_IGNORE: ${{ inputs.ignore }}
+        INPUT_STRICT: ${{ inputs.strict }}
+      run: bash "${{ github.action_path }}/scripts/push.sh"
+
+    - name: Push preview theme
+      if: inputs.mode == 'preview'
+      id: preview
+      shell: bash
+      env:
+        SHOPIFY_FLAG_STORE: ${{ inputs.store }}
+        SHOPIFY_CLI_THEME_TOKEN: ${{ inputs.theme-token }}
+        INPUT_CONTEXT: ${{ inputs.context }}
+        INPUT_PATH: ${{ inputs.path }}
+        INPUT_ONLY: ${{ inputs.only }}
+        INPUT_IGNORE: ${{ inputs.ignore }}
+        INPUT_STRICT: ${{ inputs.strict }}
+      run: bash "${{ github.action_path }}/scripts/preview.sh"
+
+    - name: Delete theme
+      if: inputs.mode == 'cleanup'
+      id: cleanup
+      shell: bash
+      env:
+        SHOPIFY_FLAG_STORE: ${{ inputs.store }}
+        SHOPIFY_CLI_THEME_TOKEN: ${{ inputs.theme-token }}
+        INPUT_THEME: ${{ inputs.theme }}
+      run: bash "${{ github.action_path }}/scripts/cleanup.sh"

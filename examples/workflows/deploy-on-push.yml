@@ -1,0 +1,21 @@
+name: Deploy theme
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Push to production theme
+        uses: Ecom-Swift-LLC/shopify-theme-deploy-action@v1
+        with:
+          mode: push
+          store: ${{ secrets.SHOPIFY_STORE }}
+          theme-token: ${{ secrets.SHOPIFY_THEME_TOKEN }}
+          theme: ${{ secrets.SHOPIFY_PROD_THEME_ID }}
+          path: theme
+          strict: 'true'
